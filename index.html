@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+
+</body>
+<script>
+    let eventSource;
+    let initialSubscriberNumber;
+
+    const broadcastChannel = new BroadcastChannel('tracking')
+    const broadcastChannelPublisher = new BroadcastChannel('publisher-switch')
+
+    broadcastChannel.addEventListener('message', event => {
+        console.log(event.data, 'from broadcast')
+    })
+
+    broadcastChannelPublisher.addEventListener('message', event => {
+        if (event.data === initialSubscriberNumber) {
+            initializeEventSources()
+        }
+    })
+
+    function findLowest(n, xs) {
+        return xs.indexOf(n) < 0 ? n : findLowest(n + 1, xs);
+    }
+
+    const initializeEventSources = () => {
+        eventSource = new EventSource('http://localhost:3000/streaming')
+
+        eventSource.addEventListener('message', event => {
+            const subscribers = getSubscribers()
+            console.log(event.data, 'from eventsource')
+
+            if (subscribers.length > 1) {
+                broadcastChannel.postMessage(event.data)
+            }
+        })
+    }
+
+    const getSubscribers = () => {
+        let subscribers = localStorage.getItem('subscribers')
+
+        if (!subscribers) {
+            return []
+        }
+
+        return subscribers.split(',').map(Number)
+    }
+
+    const getNewSubscriber = (subscribers) => {
+        return findLowest(1, subscribers)
+    }
+
+    const setNewSubscriber = (subscribers, newSubscriber) => {
+        localStorage.setItem('subscribers', [...subscribers, newSubscriber].sort().join(','))
+    }
+
+    window.addEventListener('load', () => {
+        const subscribers = getSubscribers()
+        initialSubscriberNumber = getNewSubscriber(subscribers)
+        setNewSubscriber(subscribers, initialSubscriberNumber)
+        if (subscribers.length === 0) {
+            initializeEventSources()
+        }
+    })
+
+    window.addEventListener('unload', () => {
+        const subscribers = getSubscribers()
+        const newSubscribers = subscribers.filter(number => number !== initialSubscriberNumber)
+        localStorage.setItem('subscribers', newSubscribers.sort().join(','))
+
+        if (eventSource && newSubscribers.length > 0) {
+            broadcastChannelPublisher.postMessage(newSubscribers[0])
+        }
+    })
+</script>
+</html>
